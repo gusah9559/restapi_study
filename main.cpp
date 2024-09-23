@@ -1,7 +1,10 @@
 #include <iostream>
 #include <cpprest/json.h>
 #include <cpprest/http_listener.h>
+#include <cpprest/uri.h>
+#include <fstream>
 #include <thread>
+#include <vector>
 
 using namespace web;
 using namespace web::http;
@@ -9,18 +12,54 @@ using namespace web::http::experimental::listener;
 using namespace std;
 
 bool is_running = true;
+vector<json::value> jsonData;
+
+void load_json_data() {
+    ifstream file("../sample.json");
+    if (file) {
+        string json_string((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+        json::value data = json::value::parse(json_string);  // 파일 내용을 파싱
+        for (const auto& item : data.as_array()) {
+            jsonData.push_back(item);
+        }
+    } else {
+        cerr << "Failed to open sample.json" << endl;
+    }
+}
+
+json::value find_person_by_name(const utility::string_t& name, const vector<web::json::value>& jsonData) {
+    for (const auto& person : jsonData) {
+        if (person.at(U("name")).as_string() == name) { // .at() 사용
+            return person;
+        }
+    }
+    return json::value(); // 빈 JSON 객체 반환 (없는 경우)
+}
 
 void handle_get(http_request request) {
-    ucout << "GET request received" << std::endl;
+    cout << "GET request received" << endl;
 
-    json::value response_data;
-    response_data[U("message")] = json::value::string(U("Get, Okay!"));
+    auto query = uri::split_query(request.request_uri().query());
+    if (query.find(U("name")) != query.end()) {
+        auto name = query[U("name")];
 
-    request.reply(status_codes::OK, response_data);
+        json::value person = find_person_by_name(name, jsonData); // jsonData 전달
+        if (!person.is_null()) {
+            request.reply(status_codes::OK, person);
+        } else {
+            json::value error_response;
+            error_response[U("error")] = json::value::string(U("Person not found"));
+            request.reply(status_codes::NotFound, error_response);
+        }
+    } else {
+        json::value error_response;
+        error_response[U("error")] = json::value::string(U("Name parameter is required"));
+        request.reply(status_codes::BadRequest, error_response);
+    }
 }
 
 void handle_post(http_request request) {
-    ucout << "POST request received" << std::endl;
+    cout << "POST request received" << endl;
 
     json::value response_data;
     response_data[U("message")] = json::value::string(U("Post, Okay!"));
@@ -29,7 +68,7 @@ void handle_post(http_request request) {
 }
 
 void handle_shutdown(http_request request) {
-    ucout << "Shutdown request received" << std::endl;
+    cout << "Shutdown request received" << endl;
 
     is_running = false;
 
@@ -40,7 +79,7 @@ void handle_shutdown(http_request request) {
 }
 
 void handle_request(http_request request) {
-    ucout << "Request received: " << request.request_uri().to_string() << std::endl;
+    cout << "Request received: " << request.request_uri().to_string() << endl;
 
     if (request.request_uri().path() == U("/shutdown")) {
         handle_shutdown(request);
@@ -54,6 +93,7 @@ void handle_request(http_request request) {
 }
 
 int main() {
+    load_json_data(); 
     uri_builder uri(U("http://localhost:8080"));
     auto addr = uri.to_uri().to_string();
     http_listener listener(addr);
@@ -63,7 +103,7 @@ int main() {
     try {
         listener
             .open()
-            .then([&listener]() { ucout << "Starting server at: " << listener.uri().to_string() << std::endl; })
+            .then([&listener]() { cout << "Starting server at: " << listener.uri().to_string() << endl; })
             .wait();
 
         while (is_running) {

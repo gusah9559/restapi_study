@@ -11,7 +11,8 @@ while true; do
 		elif ((count % 3 == 1 )); then
 			curl -X POST http://localhost:8080
 		else
-			curl -X GET http://localhost:8080/shutdown					    
+			# curl -X GET http://localhost:8080/shutdown		
+			curl -X GET "http://localhost:8080?name=Name1"		    
 		fi
 			sleep 1
 		done
